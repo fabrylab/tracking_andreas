@@ -15,7 +15,7 @@ import copy
 from pyTrack.utilities import *
 
 
-def cdb_add_detection(frame,db, detect_funct, layer=None, detect_type = None, image=None):
+def cdb_add_detection(frame, db, detect_funct, cdb_types=["detections"], layer=None, detect_type = None, image=None):
     '''
     wrapping writing and reading to database
     :param frame:
@@ -25,46 +25,61 @@ def cdb_add_detection(frame,db, detect_funct, layer=None, detect_type = None, im
     :param image:
     :return:
     '''
-    if not isinstance(image,np.ndarray):
-        image=db.getImage(frame=frame,layer=layer).data.astype(float)
 
-    mask = segemtation_diff_img(image)
-    detections_pos, detections_neg = detect_funct(mask, db)
+    if not isinstance(image, db.table_image):
+        cdb_image = db.getImage(frame=frame, layer=layer)
+    else:
+        cdb_image = image
+    if not isinstance(image, np.ndarray):
+        if not isinstance(image,  db.table_image):
+            img = cdb_image.data.astype(float)
+    else:
+        img = image
+    detection, mask = detect_funct(img, db)  # must return as iterable
+
+
+
     # setting markers at the weighted centroids of cells in the cdb files
     try:
-        db.setMarkers(frame=frame, x=detections_pos[:, 1], y=detections_pos[:, 0], type='positive_detections')
-        db.setMarkers(frame=frame, x=detections_neg[:, 1], y=detections_neg[:, 0], type='negative_detections')
+        if detect_type=="diff":
+            for detect, types in zip(detection, cdb_types):
+                db.setMarkers(frame=frame, x=detect[:, 1], y=detect[:, 0], type=types)
+        else:
+            db.setMarkers(frame=frame, x=detection[:, 1], y=detection[:, 0], type=cdb_types)
+
+
     except Exception as e:
         print("Error", e)
 
     try:
         if detect_type == "diff":
-            m = (detections_pos * 1 + detections_neg * 2).astype("uint8")
+            m = (mask[0] * 1 + mask[1] * 2).astype("uint8")
         else:
             m = mask.astype("uint8")
-        db.setMask(image=frame, data=m)
+        db.setMask(image=cdb_image, data=m)
     except Exception as e:
         print("Error", e)
 
 
-def detect_diff(masks):
+def detect_diff(image,  *args, **kwargs):
 
+    masks = segemtation_diff_img(image)
     positive_mask, negative_mask = masks
     mask= positive_mask*2+negative_mask
     mask_cdb = mask.astype(np.uint8)
 
        # labeling each sell and calcualting various properties of the labeld regions
     labeled_pos = measure_label(positive_mask)
-    regions_pos = regionprops(labeled_pos)
+    regions_pos = regionprops(labeled_pos, intensity_image=image)
     detections_pos=[r.weighted_centroid for r in regions_pos]
     detections_pos = np.array(detections_pos)
 
     labeled_neg = measure_label(negative_mask)
-    regions_neg = regionprops(labeled_neg)
+    regions_neg = regionprops(labeled_neg, intensity_image=image)
     detections_neg = [r.weighted_centroid for r in regions_neg]
     detections_neg = np.array(detections_neg)
 
-    return detections_pos, detections_neg
+    return (detections_pos, detections_neg), masks
 
 
 

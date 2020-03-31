@@ -1,102 +1,13 @@
-import sys
-import numpy as np
-from tqdm import tqdm
-from natsort import natsorted
-from skimage.measure import label as measure_label
-from skimage.morphology import remove_small_objects
-from skimage.filters import gaussian,sobel,laplace, threshold_otsu,threshold_local,threshold_niblack
-import os
-from skimage.measure import regionprops
-import re
-from shutil import copyfile
-import cv2 as cv
-import clickpoints
 from PIL import Image
 
+from pyTrack.database_functions import setup_masks_and_layers, add_images
 from pyTrack.detection_functions import cdb_add_detection, detect_diff, diff_img_sobel
+from pyTrack.stitching_ants import stitch
+from pyTrack.tracking_functions import tracking_opt
 from pyTrack.utilities import *
-from pyTrack.database_functions import setup_masks_and_layers
-
-def tracking_opt(db, max_dist,type="",color="#0000FF"):
-
-    all_markers = {}  # write this at segemntation and detection
-
-    # dictionary [frame][marker id][(x,y) position)
-    for frame in range(db.getImageCount()):
-        all_markers[frame] = []
-        for marker in db.getMarkers(frame=frame, type=type):
-            all_markers[frame].append([marker.x, marker.y])
-
-    # dictionary with [track id][(marker id, frame)]
-
-    tracks = {id: [(0, np.array(position))] for (id, position) in
-              enumerate(all_markers[0])}  # also initializing first values
-    ids = np.array(list(tracks.keys()))  # list of track ids, to associate with a merker
-
-    for frame in range(1, db.getImageCount() - 1):
-        markers1_pos = np.array(all_markers[frame - 1])
-        markers2_pos = np.array(all_markers[frame])
-        if len(markers2_pos) == 0:  # if sttatement if no detections are found in the next frame
-            continue
-        if len(markers1_pos) == 0:  # if sttatement if no detections are found in the previous frame
-            remaining = np.arange(len(markers2_pos))  # remaining markers from markers2_pos
-            # new track entries
-            for i, ind in enumerate(remaining):
-                tracks[max_id + i] = [(frame, markers2_pos[ind])]
-                ids_n[remaining] = max_id + i
-            ids = ids_n  # overwriting old ids assignement
-            continue
-
-        distances = np.linalg.norm(markers2_pos[None, :] - markers1_pos[:, None],
-                                   axis=2)  # first substracting full all values in matrix1 with all values n matrix2,
-        # then norm ofer appropriate axis # distances has
-        # matrix -->markers2 (axis2)
-        # |
-        # |
-        # makers1 (axis1)
-        min_value = 0
-        row_ind, col_ind = [], []
-        while np.nanmin(distances) < max_dist:
-            min_pos = list(np.unravel_index(np.nanargmin(distances), distances.shape))
-            distances[min_pos[0], :] = np.nan
-            distances[:, min_pos[1]] = np.nan
-            row_ind.append(int(min_pos[0]))
-            col_ind.append(int(min_pos[1]))
-
-        row_ind, col_ind = np.array(row_ind), np.array(
-            col_ind)  # finds optimal adssigment , check if this is faster then nan method
-
-        ids_n = np.zeros(len(markers2_pos))  # list of track ids the markers from markers2_pos have been assigned to
-        for id, ind in zip(ids[row_ind], col_ind):
-            tracks[id].append((frame, markers2_pos[ind]))
-            ids_n[ind] = id
-
-        remaining = np.arange(len(markers2_pos))  # remaining markers from markers2_pos
-        remaining = remaining[~np.isin(remaining, col_ind)]
-        max_id = np.max(list(tracks.keys()))
-
-        # new track entries
-        for i, ind in enumerate(remaining):
-            tracks[max_id + i + 1] = [(frame, markers2_pos[ind])]
-            ids_n[ind] = max_id + i + 1
-        ids = np.array([int(x) for x in ids_n])  # overwriting old ids assignement
-
-    # settig new tracks
 
 
-
-    db.setMarkerType(name="track"+type, color=color, mode=db.TYPE_Track)
-    for id, values in tracks.items():
-        print(id, values)
-        new_track = db.setTrack('track'+type)
-        xs = [x[1][0] for x in values]
-        ys = [x[1][1] for x in values]
-        frames = [x[0] for x in values]
-        db.setMarkers(frame=frames, type='track'+type, x=xs, y=ys, track=new_track,
-                      text="track_" + str(id))
-
-
-def stitch(db, minutes_per_frames=5,type="track"):
+def stitch_old(db, minutes_per_frames=5,type="track"):
     '''
     parameters:
     db- a cdb database obeject, containing Track_type markers
@@ -107,7 +18,7 @@ def stitch(db, minutes_per_frames=5,type="track"):
     (difference of frames) distance. Tracks are joined by calculating a score matrix and finding the best matches. The score is
     composed of the euclidean distance added with the temporal distance, weighted by a factor. No tracks further then 10
     frames a part and only tracks with no temporal overlap will be stitched. Additionaly a maximal score  is set from
-    the average velocity of all tracks.titching will result in a new track with  nans at the marker position between
+    the average velocity of all track. stitching will result in a new track with  nans at the marker position between
     the two old tracks.
     '''
 
@@ -200,7 +111,16 @@ def stitch(db, minutes_per_frames=5,type="track"):
 
     return stitched_id
 
-
+def add_diff_image(outputfolder,layer1="images",layer2="diff_images"):
+    for i, frame in tqdm(enumerate(range(db.getImageCount() - 1))):
+        # making and saving difference images
+        img1 = db.getImage(layer="images", frame=frame)
+        img2 = db.getImage(layer="images", frame=frame + 1)
+        diff = diff_img_sobel(img1, img2)
+        im = Image.fromarray(diff)
+        name_img = 'diff' + str(i).zfill(4) + ".tif"
+        im.save(os.path.join(outputfolder, name_img))
+        db.setImage(filename=name_img, path=1, layer="diff_images", sort_index=frame)
 
 def list_image_files(directory):
 
@@ -230,63 +150,94 @@ def list_image_files(directory):
                                     re.match(identifier[0] + 'rep\d*' + identifier[1] + str(identifier[2]) + '_.*', x)])
     return(file_list_dict_max)
 
+def tracks_to_dict(t_type="trackpositive_detections"):
+    tracks_dict=defaultdict(list)  ### improve by using direct sql query or by iterating through frames
+    for i,t in enumerate(db.getTracks(t_type)):
+         for m in t.markers:
+              tracks_dict[i].append([m.x, m.y, m.image.sort_index])
+    return tracks_dict
+
+def write_tracks_dict_to_db(db, tracks_dict, marker_type):
+    for t_id, values in tracks_dict.items():
+        new_track = db.setTrack(marker_type)  # produces new track for marker_type
+        xs = [x[0] for x in values]
+        ys = [x[1] for x in values]
+        frames = [x[2] for x in values]
+        db.setMarkers(frame=frames, type=marker_type, x=xs, y=ys, track=new_track,
+                      text="track_" + str(t_id))
 
 
-
-folder=r'/home/user/Desktop/biophysDS/dboehringer/Platte_4/4.3.19_NK_Lub11Sph_Tina/data/'
-import glob as glob
+folder=r'/home/user/Desktop/biophysDS/abauer/test_data_spheroid_spheroid_nk_migration/'
 #images = glob.glob(r'/home/user/Desktop/biophysDS/dboehringer/Platte_4/4.3.19_NK_Lub11Sph_Tina/data/*')
 
-outputfolder=r'/media/user/GINA1-BK/davids_stuff_12_02_2020/'
+outputfolder=r'/home/user/Desktop/biophysDS/abauer/test_data_spheroid_spheroid_nk_migration/'
 file_list_dict=list_image_files(folder)
 
-markers = {"positive_detections":"#00FF00","negative_detections":"#FF0000","pre_track_detection":"#0000FF"}
+markers = {"positive_detections":"#00FF00","negative_detections":"#FF0000"}
 masks =  {"positive_segmentation":["#0000FF",2] ,"negative_segmentation":["#00FF00",1],"overlapp":["#FF0000",3]}
 layers =  ["images"]
 
 
+
+##parameters:
+max_tracking_dist = 100 # frames pixel previous value
+min_frame_dist_stitching = 0 # frames no temporal overlapp
+max_frame_dist_stitching = 5 # frames previous value??
+max_dist_stitching = 80 # in pixels, not yet optimized
+min_track_length = 4 # filtering small tracks /maybe 2 or 3 is also ok?
+
+
+
 for name in file_list_dict.keys():
-        print("analysing---"+name)
-        print('--> Preprocessing')
-        images = [os.path.join(folder,x) for x in file_list_dict[name]] # full path to image
-        #images = natsorted(images) # sorting the images, to get correct sorting for repetions
+    print("analysing---" + name)
+    print('--> Preprocessing')
+    images = [os.path.join(folder, x) for x in file_list_dict[name]]  # full path to image
+    # images = natsorted(images) # sorting the images, to get correct sorting for repetions
 
-        db_name = name + "database.cdb"
-        db=setup_masks_and_layers(db_name, outputfolder, markers, masks, layers)
-
-
-        # writes images with sort index (cooresponding to frame) and correct path to cb file
-        print('--> Preprocessing')
-        for i, file in tqdm(enumerate(images),total=len(images)):
-            image = db.setImage(filename=os.path.split(file)[1], path=1,layer="images",sort_index=i)
-
-        print('--> Detection')
-        for frame in tqdm(db.getImageCount()-1):
-            # making and saving difference images
-            img1 = db.getImage(layer="images", frame=frame)
-            img2 = db.getImage(layer="images", frame=frame+1)
-            diff = diff_img_sobel(img1, img2)
-            im = Image.fromarray(diff)
-            name_img ='diff' + str(i).zfill(4) + ".tif"
-            im.save(os.path.join(outputfolder,name_img))
-            image = db.setImage(filename=name_img, path=1, layer="diff_images", sort_index=frame)
-
-            cdb_add_detection(frame, db, detect_diff, layer="diff_images", detect_type = "diff", image=diff)
-
-        print('-->Tracking')
-        r = 100
-        tracking_opt(db, r,type="positive_detections",color="#00FF00")
-        tracking_opt(db, r, type="negative_detections",color="#0000FF")
+     # setting up the data base and adding images
+    db_name = name + "database.cdb"
+    db = setup_masks_and_layers(db_name, outputfolder, markers, masks, layers)
+    add_images(db, images)
 
 
-        print('-->Stitiching')
+
+    # makeing diffrence images from frame i to frame i+1 #### could speed up dramatically by loading images from disc, not from clickpoints
+    add_diff_image(outputfolder, layer1="images", layer2="diff_images")
+
+    print('--> Detection')
+    for i, frame in tqdm(enumerate(range(db.getImageCount() - 1))):
+        cdb_add_detection(frame, db, detect_diff, cdb_types=["positive_detections","negative_detections"],
+                          layer="diff_images", detect_type="diff")
 
 
-        copyfile(outputfolder+'/'+name+'bright_part.cdb',outputfolder+'/'+name+'bright_part_prestitch.cdb')
+    print('-->Tracking')
+    tracking_opt(db, max_tracking_dist, type="positive_detections", color="#00FF00")
+    tracking_opt(db, max_tracking_dist, type="negative_detections", color="#0000FF")
 
-        stitched_id_p = stitch(db,type="trackpositive_detections")
-        stitched_id_n = stitch(db, type="tracknegative_detections")
+    print('-->Reading tracks from data base')
+    tracks_dict1 = tracks_to_dict(t_type="trackpositive_detections")
+    tracks_dict2 = tracks_to_dict(t_type="tracknegative_detections")
 
-        db.db.close()
+    # copy database before stitching
+    copyfile(os.path.join(folder, db_name), os.path.join(folder, "not_stitched" + db_name))
 
+
+    print('-->Stitiching')
+    tracks_stitched1, stitched_id, gaps, old_ids = stitch(tracks_dict1, f_min=min_frame_dist_stitching
+                                                          , f_max=max_frame_dist_stitching, s_max=max_dist_stitching, method="sparse")
+    tracks_stitched2, stitched_id, gaps, old_ids = stitch(tracks_dict2, f_min=min_frame_dist_stitching
+                                                          , f_max=max_frame_dist_stitching, s_max=max_dist_stitching, method="sparse")
+
+     # filtering small tracks:
+    tracks_stitched1 = {key:value for key,value in tracks_stitched1.items() if len(value) > min_track_length}
+    tracks_stitched2 = {key: value for key, value in tracks_stitched2.items() if len(value) > min_track_length}
+
+    #### removes all exisitng markers from the database!!!!!!!!!!
+    db.deleteMarkers()
+    db.deleteTracks()
+    
+    write_tracks_dict_to_db(db, tracks_stitched1, "trackpositive_detections")
+    write_tracks_dict_to_db(db, tracks_stitched2, "tracknegative_detections")
+
+    db.db.close()
 

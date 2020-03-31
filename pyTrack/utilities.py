@@ -113,7 +113,7 @@ def normalizing(img,lq=0,uq=100):
     img[img > 1] = 1.0
     return img
 
-
+'''
 def check_file(f,path_filters):
     f=
     f2=
@@ -221,7 +221,7 @@ def collect_files(folder,selector_path="SphInv",selectors_file=["rep","Fluo"],ne
 
 
 
-
+'''
 def ndargmin(array):
     return np.unravel_index(np.nanargmin(array), array.shape)
 

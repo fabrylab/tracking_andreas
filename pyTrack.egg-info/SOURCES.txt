@@ -1,0 +1,14 @@
+README.md
+setup.py
+pyTrack/_version.py
+pyTrack/database_functions.py
+pyTrack/detection_functions.py
+pyTrack/read_write.py
+pyTrack/stitching_ants.py
+pyTrack/stitching_functions.py
+pyTrack/tracking_functions.py
+pyTrack/utilities.py
+pyTrack.egg-info/PKG-INFO
+pyTrack.egg-info/SOURCES.txt
+pyTrack.egg-info/dependency_links.txt
+pyTrack.egg-info/top_level.txt

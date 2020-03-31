@@ -61,6 +61,12 @@ def setup_masks_and_layers(db_name, folder, markers, masks, layers):
     for name in layers[1:]:
         db.getLayer(name, base_layer=base_layer, create=True)
 
+
+
     return db
 
+def add_images(db, images):
+    # images must contain full paths
+    for i, file in tqdm(enumerate(images), total=len(images)):
+        image = db.setImage(filename=os.path.split(file)[1], path=1, layer="images", sort_index=i)
 

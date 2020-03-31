@@ -258,4 +258,81 @@ def nearest_neighbour_tracking(det1_ids, det2_ids, n_det2_ids, frame, max_track_
     '''
 
     # iterating through all #indices of new detections
+    pass
 
+def tracking_opt(db, max_dist,type="",color="#0000FF"):
+     ### tracking based on diffrence between consecutive frames
+    all_markers = {}  # write this at segemntation and detection
+
+    # dictionary [frame][marker id][(x,y) position)
+    for frame in range(db.getImageCount()):
+        all_markers[frame] = []
+        for marker in db.getMarkers(frame=frame, type=type):
+            all_markers[frame].append([marker.x, marker.y])
+
+    # dictionary with [track id][(marker id, frame)]
+
+    tracks = {id: [(0, np.array(position))] for (id, position) in
+              enumerate(all_markers[0])}  # also initializing first values
+    ids = np.array(list(tracks.keys()))  # list of track ids, to associate with a merker
+
+    for frame in range(1, db.getImageCount() - 1):
+        markers1_pos = np.array(all_markers[frame - 1])
+        markers2_pos = np.array(all_markers[frame])
+        if len(markers2_pos) == 0:  # if sttatement if no detections are found in the next frame
+            continue
+        if len(markers1_pos) == 0:  # if sttatement if no detections are found in the previous frame
+            remaining = np.arange(len(markers2_pos))  # remaining markers from markers2_pos
+            # new track entries
+            for i, ind in enumerate(remaining):
+                tracks[max_id + i] = [(frame, markers2_pos[ind])]
+                ids_n[remaining] = max_id + i
+            ids = ids_n  # overwriting old ids assignement
+            continue
+
+        distances = np.linalg.norm(markers2_pos[None, :] - markers1_pos[:, None],
+                                   axis=2)  # first substracting full all values in matrix1 with all values n matrix2,
+        # then norm ofer appropriate axis # distances has
+        # matrix -->markers2 (axis2)
+        # |
+        # |
+        # makers1 (axis1)
+        min_value = 0
+        row_ind, col_ind = [], []
+        while np.nanmin(distances) < max_dist:
+            min_pos = list(np.unravel_index(np.nanargmin(distances), distances.shape))
+            distances[min_pos[0], :] = np.nan
+            distances[:, min_pos[1]] = np.nan
+            row_ind.append(int(min_pos[0]))
+            col_ind.append(int(min_pos[1]))
+
+        row_ind, col_ind = np.array(row_ind), np.array(
+            col_ind)  # finds optimal adssigment , check if this is faster then nan method
+
+        ids_n = np.zeros(len(markers2_pos))  # list of track ids the markers from markers2_pos have been assigned to
+        for id, ind in zip(ids[row_ind], col_ind):
+            tracks[id].append((frame, markers2_pos[ind]))
+            ids_n[ind] = id
+
+        remaining = np.arange(len(markers2_pos))  # remaining markers from markers2_pos
+        remaining = remaining[~np.isin(remaining, col_ind)]
+        max_id = np.max(list(tracks.keys()))
+
+        # new track entries
+        for i, ind in enumerate(remaining):
+            tracks[max_id + i + 1] = [(frame, markers2_pos[ind])]
+            ids_n[ind] = max_id + i + 1
+        ids = np.array([int(x) for x in ids_n])  # overwriting old ids assignement
+
+    # settig new tracks
+
+
+
+    db.setMarkerType(name="track"+type, color=color, mode=db.TYPE_Track)
+    for id, values in tracks.items():
+        new_track = db.setTrack('track'+type)
+        xs = [x[1][0] for x in values]
+        ys = [x[1][1] for x in values]
+        frames = [x[0] for x in values]
+        db.setMarkers(frame=frames, type='track'+type, x=xs, y=ys, track=new_track,
+                      text="track_" + str(id))
