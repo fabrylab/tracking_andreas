@@ -1,12 +1,30 @@
 from PIL import Image
-
+from scipy.ndimage import zoom
 from pyTrack.database_functions import setup_masks_and_layers, add_images
 from pyTrack.detection_functions import cdb_add_detection, detect_diff, diff_img_sobel
 from pyTrack.stitching_ants import stitch
 from pyTrack.tracking_functions import tracking_opt
 from pyTrack.utilities import *
 
+def add_single_diff_image(frame ,outputfolder=None, layer1="images", layer2="diff_images",save=True,  save_type=".tif",save_diff_quality=None):
+    img1 = db.getImage(layer=layer1, frame=frame)
+    img2 = db.getImage(layer=layer1, frame=frame + 1)
+    diff = diff_img_sobel(img1, img2)
 
+    if save:
+        name_img = 'diff' + str(frame).zfill(4) + save_type
+        if save_type in[".jpeg",".png"]: # converting to appropriate datatype
+            diff_save = (normalizing(diff)*255).astype("uint8")
+        else:
+            diff_save = diff
+        im = Image.fromarray(diff_save)
+        # saving with jpeg compression
+        if isinstance(save_diff_quality,(float,int)) and save_type==".jpeg":
+            im.save(os.path.join(outputfolder, name_img,), format='JPEG',quality=save_diff_quality)
+        else:
+            im.save(os.path.join(outputfolder, name_img))
+        db.setImage(filename=name_img, path=2, layer=layer2, sort_index=frame)
+    return  diff
 
 def add_diff_image(outputfolder, add_name="", layer1="images", layer2="diff_images"):
     new_folder = createFolder(os.path.join(outputfolder, "diff" + add_name))
@@ -75,7 +93,7 @@ file_list_dict=list_image_files(folder)
 markers = {"positive_detections":"#00FF00","negative_detections":"#FF0000"}
 masks =  {"positive_segmentation":["#0000FF",2] ,"negative_segmentation":["#00FF00",1],"overlapp":["#FF0000",3]}
 layers =  ["images"]
-
+new_folder = None
 
 
 ##parameters:
@@ -84,8 +102,9 @@ min_frame_dist_stitching = 0 # frames no temporal overlapp
 max_frame_dist_stitching = 5 # frames previous value??
 max_dist_stitching = 80 # in pixels, not yet optimized
 min_track_length = 4 # filtering small tracks /maybe 2 or 3 is also ok?
-
-
+save_diffs = True # sets whether to save the diff images or not
+save_diff_quality = 40 # quality when saving as jpeg range from 1 to 75 is advised
+save_diff_type=".jpeg" # can further help with compression
 
 for name in file_list_dict.keys():
     print("analysing---" + name)
@@ -101,12 +120,18 @@ for name in file_list_dict.keys():
 
 
     # makeing diffrence images from frame i to frame i+1 #### could speed up dramatically by loading images from disc, not from clickpoints
-    add_diff_image(outputfolder, add_name=name, layer1="images", layer2="diff_images")
+    #add_diff_image(outputfolder, add_name=name, layer1="images", layer2="diff_images")
+    if save_diffs:
+        new_folder = createFolder(os.path.join(outputfolder, "diff" + name))
+        db.setPath(new_folder, 2)
 
     print('--> Detection')
-    for i, frame in tqdm(enumerate(range(db.getImageCount() - 1))):
+    for frame in tqdm(range(db.getImageCount() - 1)):
+        image = add_single_diff_image(frame, new_folder, layer1="images", layer2="diff_images",save=save_diffs
+                                      ,save_diff_quality=save_diff_quality,
+                                       save_type=save_diff_type)
         cdb_add_detection(frame, db, detect_diff, cdb_types=["positive_detections","negative_detections"],
-                          layer="diff_images", detect_type="diff")
+                          layer="diff_images", detect_type="diff",image=image)
 
 
     print('-->Tracking')

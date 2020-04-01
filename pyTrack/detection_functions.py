@@ -25,9 +25,8 @@ def cdb_add_detection(frame, db, detect_funct, cdb_types=["detections"], layer=N
     :param image:
     :return:
     '''
-    print(1)
     if not isinstance(image, db.table_image):
-        cdb_image = db.getImage(frame=frame, layer=layer)
+        cdb_image = db.getImage(frame=frame, layer=1)
     else:
         cdb_image = image
     if not isinstance(image, np.ndarray):
