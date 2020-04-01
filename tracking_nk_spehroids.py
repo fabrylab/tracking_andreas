@@ -6,7 +6,7 @@ from pyTrack.stitching_ants import stitch
 from pyTrack.tracking_functions import tracking_opt
 from pyTrack.utilities import *
 
-def add_single_diff_image(frame ,outputfolder=None, layer1="images", layer2="diff_images",save=True,  save_type=".tif",save_diff_quality=None):
+def add_single_diff_image(frame ,outputfolder=None, layer1="images", layer2="diff_images",save=True,  save_type=".jpeg",save_diff_quality=None):
     img1 = db.getImage(layer=layer1, frame=frame)
     img2 = db.getImage(layer=layer1, frame=frame + 1)
     diff = diff_img_sobel(img1, img2)
@@ -84,10 +84,16 @@ def write_tracks_dict_to_db(db, tracks_dict, marker_type):
                       text="track_" + str(t_id))
 
 
-folder=r'/home/user/Desktop/biophysDS/abauer/test_data_spheroid_spheroid_nk_migration/'
-#images = glob.glob(r'/home/user/Desktop/biophysDS/dboehringer/Platte_4/4.3.19_NK_Lub11Sph_Tina/data/*')
+# network path like this
+# r'\\131.188.117.96\..\EVAL'
 
-outputfolder=r'/home/user/Desktop/biophysDS/abauer/test_data_spheroid_spheroid_nk_migration2/'
+
+folder=    r'\\131.188.117.96\biophysDS\dboehringer\Platte_3\Migration-and-fiberorientation\4.3.19_NK_Lub11Sph_Tina\data2'
+
+outputfolder=     r'\\131.188.117.96\biophysDS\dboehringer\Platte_3\Migration-and-fiberorientation\4.3.19_NK_Lub11Sph_Tina\EVAL\tracking-out'
+
+
+
 file_list_dict=list_image_files(folder)
 
 markers = {"positive_detections":"#00FF00","negative_detections":"#FF0000"}
