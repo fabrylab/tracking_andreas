@@ -237,6 +237,8 @@ def createFolder(directory):
     except OSError:
         print('Error: Creating directory. ' + directory)
 
+    return directory
+
 
 
 #function to convert none object from re.search to empty string
