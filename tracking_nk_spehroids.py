@@ -13,13 +13,13 @@ def add_diff_image(outputfolder, add_name="", layer1="images", layer2="diff_imag
     db.setPath(new_folder,2)
     for i, frame in tqdm(enumerate(range(db.getImageCount() - 1))):
         # making and saving difference images
-        img1 = db.getImage(layer="images", frame=frame)
-        img2 = db.getImage(layer="images", frame=frame + 1)
+        img1 = db.getImage(layer= layer1, frame=frame)
+        img2 = db.getImage(layer= layer1, frame=frame + 1)
         diff = diff_img_sobel(img1, img2)
         im = Image.fromarray(diff)
         name_img = 'diff' + str(i).zfill(4) + ".tif"
         im.save(os.path.join(new_folder, name_img))
-        db.setImage(filename=name_img, path=2, layer="diff_images", sort_index=frame)
+        db.setImage(filename=name_img, path=2, layer=layer2, sort_index=frame)
 
 def list_image_files(directory):
 
