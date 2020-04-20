@@ -1,6 +1,6 @@
 from PIL import Image
 from scipy.ndimage import zoom
-from pyTrack.database_functions import setup_masks_and_layers, add_images
+from pyTrack.database_functions import *
 from pyTrack.detection_functions import cdb_add_detection, detect_diff, diff_img_sobel
 from pyTrack.stitching_ants import stitch
 from pyTrack.tracking_functions import tracking_opt
@@ -136,8 +136,7 @@ for name in file_list_dict.keys():
         image = add_single_diff_image(frame, new_folder, layer1="images", layer2="diff_images",save=save_diffs
                                       ,save_diff_quality=save_diff_quality,
                                        save_type=save_diff_type)
-        cdb_add_detection(frame, db, detect_diff, cdb_types=["positive_detections","negative_detections"],
-                          layer="diff_images", detect_type="diff",image=image)
+        cdb_add_detection(frame, db, detect_diff, cdb_types=["positive_detections","negative_detections"], image=image)
 
 
     print('-->Tracking')
@@ -145,8 +144,8 @@ for name in file_list_dict.keys():
     tracking_opt(db, max_tracking_dist, type="negative_detections", color="#0000FF")
 
     print('-->Reading tracks from data base')
-    tracks_dict1 = tracks_to_dict(t_type="trackpositive_detections")
-    tracks_dict2 = tracks_to_dict(t_type="tracknegative_detections")
+    tracks_dict1 = tracks_to_dict(db, t_type="trackpositive_detections")
+    tracks_dict2 = tracks_to_dict(db, t_type="tracknegative_detections")
 
     # copy database before stitching
     copyfile(os.path.join(outputfolder, db_name), os.path.join(outputfolder, "not_stitched" + db_name))

@@ -260,8 +260,9 @@ def nearest_neighbour_tracking(det1_ids, det2_ids, n_det2_ids, frame, max_track_
     # iterating through all #indices of new detections
     pass
 
-def tracking_opt(db, max_dist,type="",color="#0000FF"):
-     ### tracking based on diffrence between consecutive frames
+def tracking_opt(db, max_dist, type="",color="#0000FF"):
+
+
     all_markers = {}  # write this at segemntation and detection
 
     # dictionary [frame][marker id][(x,y) position)
@@ -276,7 +277,7 @@ def tracking_opt(db, max_dist,type="",color="#0000FF"):
               enumerate(all_markers[0])}  # also initializing first values
     ids = np.array(list(tracks.keys()))  # list of track ids, to associate with a merker
 
-    for frame in range(1, db.getImageCount() - 1):
+    for frame in tqdm(range(1, db.getImageCount() - 1)):
         markers1_pos = np.array(all_markers[frame - 1])
         markers2_pos = np.array(all_markers[frame])
         if len(markers2_pos) == 0:  # if sttatement if no detections are found in the next frame

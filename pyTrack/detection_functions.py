@@ -1,6 +1,6 @@
 
-
-from skimage.measure import label as measure_label
+from scipy.ndimage import label as sci_label
+from skimage.measure import label
 from skimage.feature import peak_local_max
 from skimage.filters import gaussian,threshold_otsu,sobel
 from skimage.morphology import watershed,remove_small_objects
@@ -11,11 +11,13 @@ from scipy.ndimage import distance_transform_edt
 from scipy.ndimage.morphology import binary_fill_holes, binary_dilation
 import numpy as np
 import copy
-
+from pyTrack.segmentation_functions import *
+from pyTrack.filters import *
 from pyTrack.utilities import *
 
 
-def cdb_add_detection(frame, db, detect_funct, cdb_types=["detections"], layer=None, detect_type = None, image=None):
+
+def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", image=None, detct_kwargs={}):
     '''
     wrapping writing and reading to database
     :param frame:
@@ -34,30 +36,38 @@ def cdb_add_detection(frame, db, detect_funct, cdb_types=["detections"], layer=N
             img = cdb_image.data.astype(float)
     else:
         img = image
-    detection, mask = detect_funct(img, db)  # must return as iterable
-
-
+    detection, mask = detect_funct(img, **detct_kwargs)  # must return as iterable
 
     # setting markers at the weighted centroids of cells in the cdb files
     try:
-        if detect_type=="diff":
+        if isinstance(detection, tuple):
             for detect, types in zip(detection, cdb_types):
                 db.setMarkers(frame=frame, x=detect[:, 1], y=detect[:, 0], type=types)
         else:
             db.setMarkers(frame=frame, x=detection[:, 1], y=detection[:, 0], type=cdb_types)
-
-
     except Exception as e:
         print("Error", e)
 
     try:
-        if detect_type == "diff":
+        if isinstance(mask, tuple):
             m = (mask[0] * 1 + mask[1] * 2).astype("uint8")
         else:
             m = mask.astype("uint8")
         db.setMask(image=cdb_image, data=m)
     except Exception as e:
         print("Error", e)
+
+
+def simple_detection(mask, image):
+    '''
+    finds center of objects in a masks
+    '''
+    labeled, n_objects = sci_label(mask)
+    if n_objects==0:
+        return np.array([]), n_objects
+    regions = regionprops(labeled, intensity_image=image)
+    detections = np.array([r.weighted_centroid for r in regions])
+    return detections, n_objects
 
 
 def detect_diff(image,  *args, **kwargs):
@@ -68,20 +78,17 @@ def detect_diff(image,  *args, **kwargs):
     mask_cdb = mask.astype(np.uint8)
 
        # labeling each sell and calcualting various properties of the labeld regions
-    labeled_pos = measure_label(positive_mask)
+    labeled_pos = label(positive_mask)
     regions_pos = regionprops(labeled_pos, intensity_image=image)
     detections_pos=[r.weighted_centroid for r in regions_pos]
     detections_pos = np.array(detections_pos)
 
-    labeled_neg = measure_label(negative_mask)
+    labeled_neg = label(negative_mask)
     regions_neg = regionprops(labeled_neg, intensity_image=image)
     detections_neg = [r.weighted_centroid for r in regions_neg]
     detections_neg = np.array(detections_neg)
 
     return (detections_pos, detections_neg), masks
-
-
-
 
 def segemtation_diff_img(diff_blurr):
     med = np.median(diff_blurr)
@@ -96,8 +103,30 @@ def segemtation_diff_img(diff_blurr):
     return positive_mask,negative_mask
 
 
+def detect(image, normalizing=(0,100), filter=None, filter_kwargs={}, segmentation=None, segmentation_kwargs={}, mask_filter=None, mask_filter_kwargs={}, detection=None, dettection_kwargs={}):
+    '''
 
+    :param normalizing:
+    :param segmentation:
+    :param min_size:
+    :param max_size:
+    :return:
+    '''
+    if len(image.shape) == 3:  # conversion to greyscale
+        image = np.mean(image, axis=2)
 
+    assert callable(segmentation), str(segmentation) + "is not a valid segmentation function"
+    img = copy.deepcopy(image)
+    if isinstance(normalizing,(tuple,list,np.ndarray)):
+        img = normalize(img, lb=normalizing[0], ub=normalizing[1])
+    if callable(filter):
+        img = filter(img, **filter_kwargs)
+    mask, threshold = segmentation(img, **segmentation_kwargs)
+    if callable(mask_filter):
+        mask = mask_filter(mask, **mask_filter_kwargs)
+    detections, n_objects = detection(mask, img, **dettection_kwargs)
+
+    return detections, mask
 
 
 
@@ -132,7 +161,7 @@ def detect1(image, db, detailed_analysis=True,threshold="otsu"):
         db.setMask(data=mask_cdb, image=image)
 
     # labeling each sell and calcualting various properties of the labeld regions
-    labeled = measure_label(mask)
+    labeled = label(mask)
     regions = regionprops(labeled, intensity_image=img2)
 
 
@@ -192,7 +221,7 @@ def detect2(image, db, detailed_analysis=True, threshold="otsu"):
         db.setMask(data=mask_cdb, image=image)
 
     # labeling each sell and calcualting various properties of the labeld regions
-    labeled = measure_label(mask)
+    labeled = label(mask)
     regions = regionprops(labeled, intensity_image=img2)
 
     # creating a list of all areas of relevant cells
@@ -288,7 +317,7 @@ def detect_fl(image, db, detailed_analysis=True, threshold="loose",spacing_facto
         mask = binary_fill_holes(img2 > thresh_new)
     # segmentation with this threshold and filling holes
 
-    labeled_objects = measure_label(mask)  # labeling
+    labeled_objects = label(mask)  # labeling
     labeled_objects_filtered = remove_small_objects(labeled_objects, min_size=min_cell_size)  # filtering
 
     # distance transform and finding local maxima
@@ -298,7 +327,7 @@ def detect_fl(image, db, detailed_analysis=True, threshold="loose",spacing_facto
     local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((20, 20)),
                                 labels=mask3, threshold_abs=np.sqrt(min_cell_size / 4))    # absolute threshold, especiall y nice to exclude cells with
         # with highly irregular edges
-    markers = measure_label(binary_dilation(local_maxi,
+    markers = label(binary_dilation(local_maxi,
                                             iterations=1))  # dilation to connect all regions with 3 pixel distance ## could use diffrent aproache or selection a little later
     maxim_coords = [x.centroid for x in
                     regionprops(markers)]  # centroid gives one point for maxima that have a flat peak
@@ -365,7 +394,7 @@ def detect_fl(image, db, detailed_analysis=True, threshold="loose",spacing_facto
     maxima_list_corrected_flat = [x for y in maxima_list_corrected.values() for x in y]
     for maxima in maxima_list_corrected_flat:
         corected_maxima[maxima[0], maxima[1]] = 1
-    markers = measure_label(corected_maxima)
+    markers = label(corected_maxima)
 
     # watershedding from new maxima
     labels = watershed(-distance, markers, mask=mask3)
@@ -420,7 +449,7 @@ def detect_maxProj1(image, threshold="otsu"):
     if threshold == "mean_std":
         mask = img2 > mu + 5 * std
 
-    labeled = measure_label(mask)
+    labeled = label(mask)
     regions = regionprops(labeled, intensity_image=img2) # calculates various properties of the segmented objects
 
 
@@ -476,7 +505,7 @@ def detect_maxProj2(image, threshold="otsu"):
     if threshold == "mean_std":
         mask = img2 > mu + 5 * std
 
-    labeled = measure_label(mask)
+    labeled = label(mask)
     regions = regionprops(labeled, intensity_image=img2) # calculates various properties of the segmented objects
 
 
@@ -526,7 +555,7 @@ def detect_minProj_beads(image):
     img2 = gaussian(img, 5)/gaussian(img, 6)  # broad band filter
     thresh=threshold_otsu(img2)*0.96 # otsu's threshold with aditional weight
     mask = img2 <   thresh
-    labeled = measure_label(mask)
+    labeled = label(mask)
     regions = regionprops(labeled, intensity_image=img2)
 
     # filtering out all small objects. Only objects with an area greater then the mean plus 0.5 standart deviations are

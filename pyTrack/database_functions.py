@@ -5,7 +5,7 @@
 from tqdm import tqdm
 import clickpoints
 import os
-
+from collections import defaultdict
 
 def annotate(db):
     '''
@@ -69,4 +69,21 @@ def add_images(db, images):
     # images must contain full paths
     for i, file in tqdm(enumerate(images), total=len(images)):
         image = db.setImage(filename=os.path.split(file)[1], path=1, layer="images", sort_index=i)
+
+
+def tracks_to_dict(db, t_type="trackpositive_detections"):
+    tracks_dict=defaultdict(list)  ### improve by using direct sql query or by iterating through frames
+    for i,t in enumerate(db.getTracks(t_type)):
+         for m in t.markers:
+              tracks_dict[i].append([m.x, m.y, m.image.sort_index])
+    return tracks_dict
+
+def write_tracks_dict_to_db(db, tracks_dict, marker_type):
+    for t_id, values in tracks_dict.items():
+        new_track = db.setTrack(marker_type)  # produces new track for marker_type
+        xs = [x[0] for x in values]
+        ys = [x[1] for x in values]
+        frames = [x[2] for x in values]
+        db.setMarkers(frame=frames, type=marker_type, x=xs, y=ys, track=new_track,
+                      text="track_" + str(t_id))
 

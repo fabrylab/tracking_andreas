@@ -148,7 +148,7 @@ def get_stitching_ids_array(tracks_dict,f_min=-2,f_max=10,s_max=300):
 
 
 
-def get_stitching_ids_sparse(tracks_dict,f_min=-2,f_max=10,s_max=300):
+def get_stitching_ids_sparse(tracks_dict, f_min=-2, f_max=10, s_max=300):
 
 
     # creating a dictionary with keys-track ids and values: all marker coordinates in the track, start frame and endframe
@@ -168,7 +168,7 @@ def get_stitching_ids_sparse(tracks_dict,f_min=-2,f_max=10,s_max=300):
     cKD_end = cKDTree(np.vstack([space_points_end.T, time_points_end]).T)
     neigbours = cKD_end.sparse_distance_matrix(cKD_start, max_distance=1,p=np.inf)## p gives "minkovski p-nomr, p=2 would be euclidean norm
     # p =np.inf give inifinty norm: distance of the closest dimension
-    neigbours = neigbours.tocoo()  # conversion to coordiante matrix, for easy row and column extraction
+    neigbours = neigbours.tocoo()  # conversion to coordinate matrix, for easy row and column extraction
     rows = neigbours.row  # ids of tracks that ends could be stitched
     cols = neigbours.col  # ids of tracks that starts could be stitched
 
