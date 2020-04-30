@@ -1,6 +1,7 @@
 import numpy as np
 from skimage.filters import gaussian
 from skimage.morphology import remove_small_objects
+from skimage.morphology import binary_erosion, binary_dilation
 
 def remove_large_objects(mask, max_size):
     mask[remove_small_objects(mask, max_size)] = False
@@ -36,6 +37,15 @@ def normalize(image, lb=0.1, ub=99.9):
 
 def fitler_objects_size(mask, min_size=None, max_size=None):
 
+    if isinstance(min_size,(int,float)):
+        mask=remove_small_objects(mask,min_size=min_size)
+    if isinstance(max_size,(int,float)):
+        mask=remove_large_objects(mask,max_size=max_size)
+    return mask
+
+def mask_cleanup1(mask, min_size=None, max_size=None):
+    mask = binary_erosion(mask)
+    mask = binary_dilation(mask)
     if isinstance(min_size,(int,float)):
         mask=remove_small_objects(mask,min_size=min_size)
     if isinstance(max_size,(int,float)):

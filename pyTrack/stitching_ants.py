@@ -150,8 +150,10 @@ def get_stitching_ids_array(tracks_dict,f_min=-2,f_max=10,s_max=300):
 
 def get_stitching_ids_sparse(tracks_dict, f_min=-2, f_max=10, s_max=300):
 
-
+    if len(tracks_dict.items())==0:
+        return np.array([])
     # creating a dictionary with keys-track ids and values: all marker coordinates in the track, start frame and endframe
+    track_id_dict ={i: t_id for i,t_id in enumerate(tracks_dict.keys())}# dictinary to convert track identified pairs to ids
     stitch_dict = {}
     for track_id, positions in tracks_dict.items():
         positions = np.array(positions)
@@ -166,7 +168,7 @@ def get_stitching_ids_sparse(tracks_dict, f_min=-2, f_max=10, s_max=300):
     space_points_start = np.array([t[0][0] for t in stitch_dict.values()]) / s_max
     cKD_start = cKDTree(np.vstack([space_points_start.T, time_points_start]).T)
     cKD_end = cKDTree(np.vstack([space_points_end.T, time_points_end]).T)
-    neigbours = cKD_end.sparse_distance_matrix(cKD_start, max_distance=1,p=np.inf)## p gives "minkovski p-nomr, p=2 would be euclidean norm
+    neigbours = cKD_end.sparse_distance_matrix(cKD_start, max_distance=1, p=np.inf)## p gives "minkovski p-nomr, p=2 would be euclidean norm
     # p =np.inf give inifinty norm: distance of the closest dimension
     neigbours = neigbours.tocoo()  # conversion to coordinate matrix, for easy row and column extraction
     rows = neigbours.row  # ids of tracks that ends could be stitched
@@ -198,7 +200,6 @@ def get_stitching_ids_sparse(tracks_dict, f_min=-2, f_max=10, s_max=300):
 
 
     ## stitching tracks according to stitch scores
-    
 
     stitch_scores2 = copy.deepcopy(stitch_scores)
     rows2 = copy.deepcopy(rows)
@@ -212,18 +213,18 @@ def get_stitching_ids_sparse(tracks_dict, f_min=-2, f_max=10, s_max=300):
         print("".join(["-"] * int(100 * (len(cols2) / init_length))) + " remaining track pairs: " + str(len(cols2)),
               end='\r')
         # check if the same pair was already stitched with reverse orientation
-        if [tid_end, tid_start] in stitched_id:
+        if [track_id_dict[tid_end], track_id_dict[tid_start]] in stitched_id:
             f = ~np.logical_and(rows2 == tid_start, cols2 == tid_end)  # filter only this pair
         else:
-            stitched_id.append([tid_start, tid_end])  # append ids to stitching list
+            stitched_id.append([track_id_dict[tid_start], track_id_dict[tid_end]])  # append ids to stitching list
             f = ~np.logical_or(rows2 == tid_start,
                                cols2 == tid_end)  # remove all other matches for relevent start and ends
         rows2, cols2, stitch_scores2 = rows2[f], cols2[f], stitch_scores2[f]
-    stitched_id=np.array(stitched_id)
+    stitched_id = np.array(stitched_id)
 
     return stitched_id
 
-def stitch(tracks_dict,f_min=-2, f_max=10, s_max=300, method="sparse"):
+def stitch(tracks_dict, f_min=-2, f_max=10, s_max=300, method="sparse"):
     '''
 
     stitching is intendend to connect interrupted tracks (no detection in some 
@@ -240,27 +241,27 @@ def stitch(tracks_dict,f_min=-2, f_max=10, s_max=300, method="sparse"):
     '''
 
     if method=="sparse":
-        stitched_id = get_stitching_ids_sparse(tracks_dict,f_min=f_min,f_max=f_max,s_max=s_max)
+        stitched_id = get_stitching_ids_sparse(tracks_dict, f_min=f_min,f_max=f_max,s_max=s_max)
     else:
         stitched_id = get_stitching_ids_array(tracks_dict,f_min=f_min,f_max=f_max,s_max=s_max)
 
     stitching_lists = stitch_order(stitched_id)
 
     # merging all tracks found to be stiched. Merging will leave nans between the two merged tracks.
-    
+    old_ids=list(tracks_dict.keys())
     tracks_stitched = defaultdict(list)# updated dictionary with stiched tracks
     gaps = defaultdict(list) # dictionary with the gaps
     
-    if len(stitched_id)==0: # retunr unschaned and empty results if nothing is stitched
-        return tracks_dict,stitched_id,gaps
-     #
+    if len(stitched_id)==0: # return unchanged and empty results if nothing is stitched
+        return tracks_dict, stitched_id, gaps, old_ids
+
     # copying not stitched tracks
-    not_stitched=set(list(tracks_dict.keys()))-set(stitched_id[:,0]).union(set(stitched_id[:,1]))
+    not_stitched = set(list(tracks_dict.keys()))-set(stitched_id[:,0]).union(set(stitched_id[:,1]))
     for id in not_stitched:
         tracks_stitched[id]=copy.deepcopy(tracks_dict[id])
-        gaps[id]=[] # nothing filled up in none stitched tracks
-       
-    for id_start,ids in stitching_lists.items():
+
+    # merging stitched tracks
+    for id_start, ids in stitching_lists.items():
         tracks_stitched[id_start]=copy.deepcopy(tracks_dict[id_start])
         for id in ids: # adding points fomr all tracks to be stitched
             tracks_stitched[id_start]+=tracks_dict[id] 
@@ -272,7 +273,7 @@ def stitch(tracks_dict,f_min=-2, f_max=10, s_max=300, method="sparse"):
         #gaps[id_start]
         
     # give new_ids for tracks:
-    old_ids=list(tracks_stitched.keys())
+
     tracks_stitched={i:values for i,values in zip(range(len(tracks_stitched.keys())),tracks_stitched.values())}
 
     # replacing overlapping points
@@ -287,7 +288,7 @@ def stitch(tracks_dict,f_min=-2, f_max=10, s_max=300, method="sparse"):
         # after the replaced row
         tracks_stitched[key] = points# writing to new dictionary
     
-    return tracks_stitched,stitched_id,gaps,old_ids
+    return tracks_stitched, stitched_id, gaps, old_ids
 
 def remove_parralle_tracks(tracks_dict,tracks_arr,end_dist=30,mean_dist=30):
     

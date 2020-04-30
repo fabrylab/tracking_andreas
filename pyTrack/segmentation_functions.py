@@ -17,7 +17,7 @@ def segementation_sd(image, f=5, mask_area=None, min_treshold=None, max_treshold
         if min_treshold > thres:  # take min_treshold as new threshold
             thres = min_treshold
     if max_treshold:
-        if max_treshold < thres:  # take min_treshold as new threshold
+        if max_treshold < thres:  # take max_treshold as new threshold
             thres = max_treshold
 
     mask = image > thres

@@ -22,7 +22,11 @@ from skimage.filters import threshold_otsu
 
 
 
-
+def make_iterable(value):
+    if not hasattr(value, '__iter__') or isinstance(value,str):
+        return [value]
+    else:
+        return value
 
 def split_path_with_os(folder):
     if not os.path.split(folder)[1]=="":

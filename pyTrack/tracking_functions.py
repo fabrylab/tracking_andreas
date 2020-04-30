@@ -3,6 +3,7 @@ from collections import defaultdict
 import numpy as np
 from pyTrack.utilities import *
 import shutil
+from pyTrack.database_functions import read_markers_iteratively
 
 def tracking_clickpoints(sort_index, db, r):
     ##with weighted_centroid
@@ -260,33 +261,26 @@ def nearest_neighbour_tracking(det1_ids, det2_ids, n_det2_ids, frame, max_track_
     # iterating through all #indices of new detections
     pass
 
-def tracking_opt(db, max_dist, type="",color="#0000FF"):
+def tracking_opt(db, max_dist, type=""):
 
+    all_markers = read_markers_iteratively(db, marker_types=type, mode="all")
 
-    all_markers = {}  # write this at segemntation and detection
-
-    # dictionary [frame][marker id][(x,y) position)
-    for frame in range(db.getImageCount()):
-        all_markers[frame] = []
-        for marker in db.getMarkers(frame=frame, type=type):
-            all_markers[frame].append([marker.x, marker.y])
-
-    # dictionary with [track id][(marker id, frame)]
-
-    tracks = {id: [(0, np.array(position))] for (id, position) in
+    tracks = {id: [(np.array(position)[0], np.array(position)[1], 0)] for (id, position) in
               enumerate(all_markers[0])}  # also initializing first values
     ids = np.array(list(tracks.keys()))  # list of track ids, to associate with a merker
 
+    max_id=0
     for frame in tqdm(range(1, db.getImageCount() - 1)):
         markers1_pos = np.array(all_markers[frame - 1])
         markers2_pos = np.array(all_markers[frame])
-        if len(markers2_pos) == 0:  # if sttatement if no detections are found in the next frame
+        if len(markers2_pos) == 0:  # if statement if no detections are found in the next frame
             continue
-        if len(markers1_pos) == 0:  # if sttatement if no detections are found in the previous frame
+        if len(markers1_pos) == 0:  # if statement if no detections are found in the previous frame
             remaining = np.arange(len(markers2_pos))  # remaining markers from markers2_pos
+            ids_n = np.zeros(len(markers2_pos))
             # new track entries
             for i, ind in enumerate(remaining):
-                tracks[max_id + i] = [(frame, markers2_pos[ind])]
+                tracks[max_id + i] = [(markers2_pos[ind][0], markers2_pos[ind][1], frame)]
                 ids_n[remaining] = max_id + i
             ids = ids_n  # overwriting old ids assignement
             continue
@@ -312,7 +306,7 @@ def tracking_opt(db, max_dist, type="",color="#0000FF"):
 
         ids_n = np.zeros(len(markers2_pos))  # list of track ids the markers from markers2_pos have been assigned to
         for id, ind in zip(ids[row_ind], col_ind):
-            tracks[id].append((frame, markers2_pos[ind]))
+            tracks[id].append((markers2_pos[ind][0],markers2_pos[ind][1], frame))
             ids_n[ind] = id
 
         remaining = np.arange(len(markers2_pos))  # remaining markers from markers2_pos
@@ -321,9 +315,11 @@ def tracking_opt(db, max_dist, type="",color="#0000FF"):
 
         # new track entries
         for i, ind in enumerate(remaining):
-            tracks[max_id + i + 1] = [(frame, markers2_pos[ind])]
+            tracks[max_id + i + 1] = [(markers2_pos[ind][0], markers2_pos[ind][1], frame)]
             ids_n[ind] = max_id + i + 1
         ids = np.array([int(x) for x in ids_n])  # overwriting old ids assignement
+    tracks = {tid:np.array(values) for tid, values in tracks.items()} ### make actual arrays
+    return tracks
 
     # settig new tracks
 

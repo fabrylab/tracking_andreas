@@ -17,23 +17,21 @@ from pyTrack.utilities import *
 
 
 
-def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", image=None, detct_kwargs={}):
+def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", cdb_image=None, image=None, detct_kwargs={}):
     '''
     wrapping writing and reading to database
     :param frame:
     :param detect_funct:
     :param layer:
     :param detect_type:
-    :param image:
+    :param image: # optional array
     :return:
     '''
-    if not isinstance(image, db.table_image):
+    if not isinstance(cdb_image, db.table_image): # clickpointimage object if not provided
         cdb_image = db.getImage(frame=frame, layer=1)
-    else:
-        cdb_image = image
-    if not isinstance(image, np.ndarray):
-        if not isinstance(image,  db.table_image):
-            img = cdb_image.data.astype(float)
+
+    if not isinstance(image, np.ndarray): # data of the image object if not provided
+        img = cdb_image.data.astype(float)
     else:
         img = image
     detection, mask = detect_funct(img, **detct_kwargs)  # must return as iterable
@@ -42,9 +40,13 @@ def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", image=Non
     try:
         if isinstance(detection, tuple):
             for detect, types in zip(detection, cdb_types):
-                db.setMarkers(frame=frame, x=detect[:, 1], y=detect[:, 0], type=types)
+                if len(detect)>0:
+                    db.setMarkers(frame=frame, x=detect[:, 1], y=detect[:, 0], type=types)
+
         else:
-            db.setMarkers(frame=frame, x=detection[:, 1], y=detection[:, 0], type=cdb_types)
+            if len(detection)>0:
+                db.setMarkers(frame=frame, x=detection[:, 1], y=detection[:, 0], type=cdb_types)
+
     except Exception as e:
         print("Error", e)
 
