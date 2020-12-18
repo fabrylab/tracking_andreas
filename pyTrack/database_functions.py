@@ -48,7 +48,9 @@ def annotate(db):
 
 def setup_masks_and_layers(db_name, input_folder, output_folder, markers=None, masks=None, layers=None, tracks=None):
 
-    cdb_filepath = os.path.join(output_folder, db_name)
+    cdb_filepath = output_folder / db_name
+    
+    print (cdb_filepath)
     db = clickpoints.DataFile(cdb_filepath, 'w')  # creates and opens the cdb file
     db.setPath(input_folder, 1)  # sets path entry of input images in cdb file
     #db.setPath(output_folder, 2)  # sets path entry of outputfolder images in cdb file
