@@ -261,7 +261,7 @@ def nearest_neighbour_tracking(det1_ids, det2_ids, n_det2_ids, frame, max_track_
     # iterating through all #indices of new detections
     pass
 
-def tracking_opt(db, max_dist, type=""):
+def tracking_opt(db, max_dist, type="", color="green"):
 
     all_markers = read_markers_iteratively(db, marker_types=type, mode="all")
 
@@ -319,17 +319,18 @@ def tracking_opt(db, max_dist, type=""):
             ids_n[ind] = max_id + i + 1
         ids = np.array([int(x) for x in ids_n])  # overwriting old ids assignement
     tracks = {tid:np.array(values) for tid, values in tracks.items()} ### make actual arrays
-    return tracks
+  
 
     # settig new tracks
-
-
 
     db.setMarkerType(name="track"+type, color=color, mode=db.TYPE_Track)
     for id, values in tracks.items():
         new_track = db.setTrack('track'+type)
-        xs = [x[1][0] for x in values]
-        ys = [x[1][1] for x in values]
-        frames = [x[0] for x in values]
+        xs = [x[0] for x in values]
+        ys = [x[1] for x in values]
+        frames = [int(x[2]) for x in values]
         db.setMarkers(frame=frames, type='track'+type, x=xs, y=ys, track=new_track,
                       text="track_" + str(id))
+    
+   
+    return tracks

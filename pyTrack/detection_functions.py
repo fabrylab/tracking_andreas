@@ -17,7 +17,7 @@ from pyTrack.utilities import *
 
 
 
-def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", cdb_image=None, image=None, detct_kwargs={}):
+def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", cdb_image=None, image=None, layer=None, detct_kwargs={}):
     '''
     wrapping writing and reading to database
     :param frame:
@@ -28,7 +28,7 @@ def cdb_add_detection(frame, db, detect_funct, cdb_types="detections", cdb_image
     :return:
     '''
     if not isinstance(cdb_image, db.table_image): # clickpointimage object if not provided
-        cdb_image = db.getImage(frame=frame, layer=1)
+        cdb_image = db.getImage(frame=frame, layer=layer)
 
     if not isinstance(image, np.ndarray): # data of the image object if not provided
         img = cdb_image.data.astype(float)
@@ -93,9 +93,20 @@ def detect_diff(image,  *args, **kwargs):
     return (detections_pos, detections_neg), masks
 
 def segemtation_diff_img(diff_blurr):
+
+    # reducing the histogramm evaluated by otsus thresholding method in two steps:
+    # 1. split in positive and negative halfs
+    # 2. split each half at the median to reduce the background pixels in the "local" histogram
     med = np.median(diff_blurr)
-    thresh1 = threshold_otsu(diff_blurr[diff_blurr < med])
-    thresh2 = threshold_otsu(diff_blurr[diff_blurr > med])
+    half1 = diff_blurr[diff_blurr < med]
+   # half1 = half1[half1 < np.median(half1)]
+    half2 = diff_blurr[diff_blurr > med]
+    #half2 = half2[half2 > np.median(half2)]
+    thresh1 = threshold_otsu(half1)
+    thresh2 = threshold_otsu(half2)
+
+   # thresh1 = threshold_otsu(diff_blurr[diff_blurr < med])
+    #thresh2 = threshold_otsu(diff_blurr[diff_blurr > med])
     positive_mask=diff_blurr<thresh1
     negative_mask=diff_blurr>thresh2
 
@@ -689,6 +700,7 @@ def diff_img_sobel(img1, img2):
     grad_img2 = sobel(img2)
     grad_img_gauss2 = gaussian(grad_img2, sigma=10)
     diff = norm(grad_img_gauss1 - grad_img_gauss2)
+    diff = diff - gaussian(diff, sigma=50)
     return diff
 
 
